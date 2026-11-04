@@ -1,0 +1,65 @@
+name: Build Dude Theft Wars R36S Port
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      apk_asset:
+        description: 'APK release asset name (must be uploaded to the release)'
+        required: true
+        default: 'com.PoxelStudios.DudeTheftAuto_0.87SC-300011_minAPI21(arm64-v8a,armeabi-v7a)(nodpi)_apkmirror.com.apk'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake make gcc g++ python3 unzip git wget curl
+
+      - name: Clone NextOS Framework
+        run: |
+          git clone --recurse-submodules https://github.com/OlhaGatito/AI-Port-Arm.git nextos-framework
+          cd nextos-framework/nextos_ports_android-master
+          git submodule update --init --recursive 2>/dev/null || true
+
+      - name: Download APK from release asset
+        id: download_apk
+        run: |
+          ASSET="${{ github.event.inputs.apk_asset || github.event.release.assets[0].name }}"
+          echo "Looking for asset: $ASSET"
+          gh release download ${{ github.event.release.tag_name || 'latest' }} \
+            --repo ${{ github.repository }} \
+            --pattern "$ASSET" \
+            --dir /tmp/apk \
+            2>&1 || true
+          ls -la /tmp/apk/ 2>/dev/null || echo "No APK found in release assets"
+          echo "apk_path=/tmp/apk/$ASSET" >> $GITHUB_OUTPUT
+
+      - name: Generate port from APK
+        if: steps.download_apk.outputs.apk_path != ''
+        run: |
+          cd nextos-framework/nextos_ports_android-master
+          bash tools/new-port.sh "${{ steps.download_apk.outputs.apk_path }}" dude-theft-wars 2>&1 || true
+          ls -la ports/ 2>&1 || true
+
+      - name: Build port
+        if: steps.download_apk.outputs.apk_path != ''
+        run: |
+          cd nextos-framework/nextos_ports_android-master
+          bash tools/build-port.sh ports/dude-theft-wars gles2 2>&1 || true
+          ls -la ports/dude-theft-wars/build/ 2>&1 || true
+
+      - name: Upload build artifact
+        if: steps.download_apk.outputs.apk_path != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: dude-theft-wars-r36s-port
+          path: nextos-framework/nextos_ports_android-master/ports/dude-theft-wars/build/
+          retention-days: 7
