@@ -9,6 +9,10 @@ on:
         description: 'APK release asset name'
         required: false
         default: 'com.PoxelStudios.DudeTheftAuto_0.87SC-300011_minAPI21.arm64-v8a.armeabi-v7a.nodpi._apkmirror.com.apk'
+      release_tag:
+        description: 'Release tag (default: latest)'
+        required: false
+        default: 'latest'
 
 jobs:
   build:
@@ -31,18 +35,18 @@ jobs:
         id: download_apk
         run: |
           ASSET="${{ github.event.inputs.apk_asset || github.event.release.assets[0].name || 'com.PoxelStudios.DudeTheftAuto_0.87SC-300011_minAPI21.arm64-v8a.armeabi-v7a.nodpi._apkmirror.com.apk' }}"
-          TAG="${{ github.event.release.tag_name || 'latest' }}"
+          TAG="${{ github.event.inputs.release_tag || github.event.release.tag_name || 'latest' }}"
           echo "Looking for asset: $ASSET in release: $TAG"
           mkdir -p /tmp/apk
-          gh release download "$TAG" \
-            --repo ${{ github.repository }} \
-            --pattern "$ASSET" \
-            --dir /tmp/apk
-          if [ -f "/tmp/apk/$ASSET" ]; then
+          curl -sL -o "/tmp/apk/$ASSET" \
+            "https://github.com/${{ github.repository }}/releases/download/$TAG/$ASSET"
+          if [ -f "/tmp/apk/$ASSET" ] && [ -s "/tmp/apk/$ASSET" ]; then
+            SIZE=$(stat -c%s "/tmp/apk/$ASSET")
+            echo "APK downloaded successfully ($SIZE bytes)"
             echo "apk_path=/tmp/apk/$ASSET" >> $GITHUB_OUTPUT
-            echo "APK downloaded successfully"
           else
-            echo "APK download failed"
+            echo "APK download failed - file missing or empty"
+            ls -la /tmp/apk/ 2>/dev/null || true
             exit 1
           fi
 
